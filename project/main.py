@@ -1,8 +1,11 @@
 import telebot, requests, json, datetime
 
 bot = telebot.TeleBot('5708841963:AAGKHWT1WD2M9VfIQj6XMgqEi6pTjhrW8Ao')
-token = {"X-RapidAPI-Key": "bba960687bmsh07b83e8768fc6f4p12c285jsnab9156e7acdc",
-		"X-RapidAPI-Host": "hotels4.p.rapidapi.com"}
+# token = {"X-RapidAPI-Key": "bba960687bmsh07b83e8768fc6f4p12c285jsnab9156e7acdc",
+# 		"X-RapidAPI-Host": "hotels4.p.rapidapi.com"}
+
+token = {"X-RapidAPI-Key": "8735a00919msh53cca4ab1530e22p14f9c0jsn62e41d6bf842",
+	"X-RapidAPI-Host": "hotels4.p.rapidapi.com"}
 
 
 command_dict = {'/start': 'Запуск бота',
@@ -16,6 +19,7 @@ command_dict = {'/start': 'Запуск бота',
 
 
 def start(message):
+	start.history = {}
 	bot.send_message(message.from_user.id, f'Привет, {message.from_user.first_name} {message.from_user.last_name}, я учебный бот!')
 
 
@@ -100,7 +104,7 @@ def get_distance(message):
 	if not message.text.isdigit():
 		bot.send_message(message.from_user.id, 'Неверное расстояние\nКакое расстояние от центра?')
 		return bot.register_next_step_handler(message, get_distance)
-	get_distance.distance = message.text
+	get_distance.distance = int(message.text)
 	bot.send_message(message.from_user.id, 'Сколько отелей вывести?')
 	bot.register_next_step_handler(message, get_hotels_count)
 
@@ -114,17 +118,20 @@ def get_photo(message):
 		bot.send_message(message.from_user.id, 'Я так и не понял, да или нет?(')
 		return bot.register_next_step_handler(message, get_photo)
 
+
+
 	bot.send_message(message.from_user.id, 'Какая дата заселения? (dd-mm-yyyy)')
 	bot.register_next_step_handler(message, register_date_in)
 
 
 def response(message):
-	answer_for_get_request = get_request(city=get_city.city)
-	bot_answer_string = ''
+	response_for_get_request = get_request(city=get_city.city)
+	city_id = None
 
-	if check_request(answer_for_get_request):
+	if response_for_get_request.get('sr'):
+		city_id = response_for_get_request.get('sr')[0].get('gaiaId')
 
-		city_id = answer_for_get_request['sr'][0]['gaiaId']
+	if city_id:
 
 		if get_command.command == '/lowprice':
 			sort = 'PRICE_LOW_TO_HIGH'
@@ -133,80 +140,139 @@ def response(message):
 		elif get_command.command == '/bestdeal':
 			sort = 'DISTANCE'
 
+		count = get_hotels_count.count
+		min_price = 1
+		max_price = 999
 
-		answer_for_post_request = post_request(id=city_id, sort=sort)
+		if get_command.command == '/bestdeal':
+			count = 30
+			max_price = price_values.values[1]
+			min_price = price_values.values[0]
 
-		if answer_for_post_request:
+		response_for_post_request = post_request(id=city_id, sort=sort, count=count, min_price=min_price, max_price=max_price)
 
-			answer_properties = get_properties(answer_for_post_request)
+		if response_for_post_request:
 
-			hotel_list = []
-			if get_command.command in ('/lowprice', '/guest_rating'):
-				answer_properties = answer_properties[:get_hotels_count.count]
+			response_properties = get_properties(response_for_post_request)
 
-			elif get_command.command == '/bestdeal':
-				answer_properties = sort_by_distance(answer_properties)
+			if response_properties:
 
-			for property_in_request in answer_properties:
-				hotel_list.append({property_in_request['name']: {'price': property_in_request['price']['lead']['amount'],
-						 'id': property_in_request['id']}})
+				hotel_list = []
 
-
-			timedelta_date = register_date_out.date - register_date_in.date
-
-			for hotel_dict in hotel_list:
-				for key, value in hotel_dict.items():
-						bot_answer_string += key + '. Цена за ночь: ' + str(round(value['price'], 2)) + ' USD. Полная цена за ' + str(timedelta_date.days) + ' дней: ' + str(round((timedelta_date.days + 1) * value['price'], 2)) + '\n'
-
-	else:
-		bot_answer_string = 'Ничего не найдено'
-	bot.send_message(message.from_user.id, bot_answer_string)
+				if get_command.command == '/bestdeal':
+					response_properties = filter_by_distance(response_properties)
+					response_properties = sort_by_price(response_properties)
+					response_properties = response_properties[:get_hotels_count.count]
 
 
-def sort_by_distance(response):
-	return filter(sort_method, response)
+				for property_in_request in response_properties:
+					hotel_details = hotel_details_request(property_in_request['id'])
+					hotel_image_list = get_images(hotel_details)
+					if hotel_details:
+						hotel_list.append({property_in_request['name']: {'price': property_in_request['price']['lead']['amount'],
+								'address': get_address_text(hotel_details),
+								'distance': property_in_request['destinationInfo']['distanceFromDestination']['value'],
+								'id': property_in_request['id'],
+								'photo': hotel_image_list}})
 
 
-def sort_method(list_to_sort):
-	for i_elem in list_to_sort:
-		for key, value in i_elem.items():
-			if value['destinationInfo']['distanceFromDestination']['value'] > get_distance.distance:
-				return True
+				timedelta_date = register_date_out.date - register_date_in.date
+
+				for hotel_dict in hotel_list:
+					for key, value in hotel_dict.items():
+							bot_answer_string = f"{key} \nАдрес: {value['address']}\nРасстояние до центра: {str(value['distance'])} км.\nЦена за ночь: {str(round(value['price'], 2))} USD. Полная цена за {str(timedelta_date.days + 1)} дней: {str(round((timedelta_date.days + 1) * value['price'], 2))} \n\n"
+
+							if get_photo.photo:
+								media = []
+								for photo in value['photo'][:3]:
+									media.append(telebot.types.InputMediaPhoto(media=photo['image']['url'], caption=bot_answer_string))
+
+							bot.send_message(message.from_user.id, bot_answer_string)
+
+							if get_photo.photo:
+								bot.send_media_group(chat_id=message.chat.id, media=media)
 			else:
-				return False
+				bot.send_message(message.from_user.id, 'Ничего не найдено')
 
+		else:
+			bot.send_message(message.from_user.id, 'Ничего не найдено')
 
-
-
-# def sort_by_price(hotel_list):
-	# for hotel in hotel_list:
-
-
-
-def check_request(answer):
-
-	if answer['sr'] == []:
-		return False
 	else:
+		bot.send_message(message.from_user.id, 'Ничего не найдено')
+
+
+def filter_by_distance(response):
+	filtered_list = list(filter(sort_method, response))
+	return filtered_list
+
+
+def sort_method(elem_to_sort):
+	if elem_to_sort['destinationInfo']['distanceFromDestination']['value'] <= get_distance.distance:
 		return True
+	else:
+		return False
+
+
+def sort_by_price(hotel_list):
+	return sorted(hotel_list, key=lambda hotel: int(hotel['price']['lead']['amount']))
 
 
 def get_data(response):
-	if response.get('data'):
-		data = response['data']
-		return data
+	return response.get('data')
 
 
 def get_property_search(response):
 	data = get_data(response)
-	if data.get('propertySearch'):
-		return data['propertySearch']
+	if data:
+		return data.get('propertySearch')
 
 
 def get_properties(response):
 	data = get_property_search(response)
-	if data.get('properties'):
-		return data['properties']
+	if data:
+		return data.get('properties')
+
+
+## for hotel details
+def get_property_info(response):
+	data = get_data(response)
+	if data:
+		return data.get('propertyInfo')
+
+
+def get_summary(response):
+	data = get_property_info(response)
+	if data:
+		return data.get('summary')
+
+
+def get_location(response):
+	data = get_summary(response)
+	if data:
+		return data.get('location')
+
+def get_address(response):
+	data = get_location(response)
+	if data:
+		return data.get('address')
+
+
+def get_address_text(response):
+	data = get_address(response)
+	if data:
+		return data.get('addressLine')
+
+
+def get_property_gallery(response):
+	data = get_property_info(response)
+	if data:
+		return data.get('propertyGallery')
+
+
+def get_images(response):
+	data = get_property_gallery(response)
+	if data:
+		return data.get('images')
 
 
 @bot.message_handler(content_types=['text'])
@@ -228,6 +294,8 @@ def send_welcome(message):
 		bot.reply_to(message, 'Я вас не понимаю(')
 
 
+
+
 @bot.message_handler(func=lambda message: True)
 def echo_all(message):
 	bot.reply_to(message, 'Я не понимаю вас(')
@@ -244,11 +312,11 @@ def get_request(city):
 		if response.status_code == requests.codes.ok:
 			return response.json()
 
-	except:
-		pass
+	except Exception:
+		return False
 
 
-def post_request(id, sort):
+def post_request(id, sort, count, min_price, max_price):
 
 	url = "https://hotels4.p.rapidapi.com/properties/v2/list"
 	try:
@@ -274,19 +342,42 @@ def post_request(id, sort):
 					"adults": 1}
 			],
 			"resultsStartingIndex": 0,
-			"resultsSize": 200,
+			"resultsSize": count,
 			"sort": sort,
-			"filters": {'availableFilter': 'SHOW_AVAILABLE_ONLY'}
+			"filters": {"price": {
+				"max": max_price,
+				"min": min_price
+			}}
 		}
-		headers = token
 
-		response = requests.request("POST", url, json=payload, headers=headers, timeout=15)
+
+
+		response = requests.request("POST", url, json=payload, headers=token, timeout=15)
+
 		if response.status_code == requests.codes.ok:
 			return response.json()
-	except:
-		pass
+	except Exception:
+		return False
 
 
+def hotel_details_request(id):
+
+	url = "https://hotels4.p.rapidapi.com/properties/v2/detail"
+	try:
+		payload = {
+			"currency": "USD",
+			"eapid": 1,
+			"locale": "ru_RU",
+			"siteId": 300000001,
+			"propertyId": id
+		}
+
+		response = requests.request("POST", url, json=payload, headers=token, timeout=15)
+		if response.status_code == requests.codes.ok:
+			return response.json()
+
+	except Exception:
+		return False
 
 
 bot.infinity_polling()
