@@ -1,4 +1,5 @@
 import telebot, requests, json, datetime
+from typing import Any
 
 bot = telebot.TeleBot('5708841963:AAGKHWT1WD2M9VfIQj6XMgqEi6pTjhrW8Ao')
 
@@ -22,28 +23,43 @@ history_requests: list = []
 
 
 def history_update(command: str, time: datetime, hotels_list: list) -> None:
+	""""
+	Функция добавляет в список, содержащий историю поиска, текущие данные запроса пользователя
+	"""
 	history_requests.append({'command': command, 'date': time, 'hotels': hotels_list})
 
 
-def start(message: telebot.types.Message) -> telebot.types.Message:
+def start(message: telebot.types.Message) -> None:
+	""""
+	Функция для команды /start
+	Приветствует пользователя и обнуляет историю поиска
+	"""
 	history_requests = []
-	bot.send_message(message.from_user.id, f'Привет, {message.from_user.first_name} {message.from_user.last_name}, я учебный бот!')
+	bot.send_message(message.from_user.id, f'Привет, {message.from_user.first_name}, я учебный бот!')
 
 
-def history(message):
+def history(message: telebot.types.Message) -> None:
+	""""
+	Функция для команды /history. Выводит историю поиска
+	"""
 	if len(history_requests) == 0:
 		bot.send_message(message.from_user.id, 'История поиска пустая')
 	else:
+		bot_string = ''
 		for history in history_requests:
-			bot_string = f'{history.get("command")}, {history.get("date")}, {", ".join(history.get("hotels"))} '
-			bot.send_message(message.from_user.id, bot_string)
+			bot_string += f'{history.get("command")}:\n{history.get("date").strftime("%Y-%m-%d %H:%M:%S")}, {", ".join(history.get("hotels"))} \n\n'
+
+		bot.send_message(message.from_user.id, bot_string)
 
 
-def register_date_in(message):
+def register_date_in(message: telebot.types.Message) -> None:
+	""""
+	Функция для регистрации даты заселения
+	"""
 	date = date_check(message.text)
 	if date:
 		register_date_in.date = date
-		bot.send_message(message.from_user.id, 'Какая дата выселения? (dd-mm-yyyy)')
+		bot.send_message(message.from_user.id, 'Какая дата выселения? (дд-мм-гггг)')
 		bot.register_next_step_handler(message, register_date_out)
 
 	else:
@@ -51,9 +67,13 @@ def register_date_in(message):
 		return bot.register_next_step_handler(message, register_date_in)
 
 
-def register_date_out(message):
+def register_date_out(message: telebot.types.Message) -> None:
+	""""
+	Функция для регистрации даты выселения
+	"""
 	date = date_check(message.text)
 	if date:
+		bot.send_message(message.from_user.id, 'Пошел искать! Пожалуйста, ожидайте.')
 		register_date_out.date = date
 		response(message)
 
@@ -62,7 +82,11 @@ def register_date_out(message):
 		return bot.register_next_step_handler(message, register_date_out)
 
 
-def date_check(date_str):
+def date_check(date_str: str) -> datetime:
+	""""
+	Функция для проверки даты из строки.
+	:return: Объект datetime
+	"""
 	date_format = '%d-%m-%Y'
 	today = datetime.datetime.now()
 	try:
@@ -73,13 +97,19 @@ def date_check(date_str):
 		return False
 
 
-def get_command(message):
+def get_command(message: telebot.types.Message) -> None:
+	""""
+	Функция для регистрации команд /lowprice, /bestdeal, /guest_rating
+	"""
 	get_command.command = message.text
-	bot.send_message(message.from_user.id, f"Привет, {message.from_user.first_name} {message.from_user.last_name}, в каком городе будем искать?")
+	bot.send_message(message.from_user.id, f"Привет, {message.from_user.first_name}, в каком городе будем искать?")
 	bot.register_next_step_handler(message, get_city)
 
 
-def get_city(message):
+def get_city(message: telebot.types.Message) -> Any:
+	""""
+	Функция для регистрации города
+	"""
 	if message.text.isdigit():
 		bot.send_message(message.from_user.id, 'Неверно указан город\nВ каком городе будем искать?')
 		return bot.register_next_step_handler(message, get_city)
@@ -88,20 +118,30 @@ def get_city(message):
 		bot.send_message(message.from_user.id, 'Сколько отелей вывести?')
 		bot.register_next_step_handler(message, get_hotels_count)
 	elif get_command.command == '/bestdeal':
-		bot.send_message(message.from_user.id, 'Какой диапазон цен? (min-max)')
+		bot.send_message(message.from_user.id, 'Какой диапазон цен за ночь в USD? (min-max)')
 		bot.register_next_step_handler(message, price_values)
 
 
-def get_hotels_count(message):
+def get_hotels_count(message: telebot.types.Message) -> Any:
+	""""
+	Функция для регистрации количества отелей
+	"""
 	if not message.text.isdigit():
 		bot.send_message(message.from_user.id, 'Неверное количество\nСколько отелей вывести?')
 		return bot.register_next_step_handler(message, get_hotels_count)
-	get_hotels_count.count = int(message.text)
+	if int(message.text) > 10:
+		get_hotels_count.count = 10
+	else:
+		get_hotels_count.count = int(message.text)
+
 	bot.send_message(message.from_user.id, 'Вывести фото?')
 	bot.register_next_step_handler(message, get_photo)
 
 
-def price_values(message):
+def price_values(message: telebot.types.Message) -> Any:
+	""""
+	Функция для регистрации диапазона цен
+	"""
 	prices = message.text.split('-')
 	if len(prices) == 2:
 		if not prices[0].isdigit or not prices[1].isdigit:
@@ -109,53 +149,67 @@ def price_values(message):
 			return bot.register_next_step_handler(message, price_values)
 		else:
 			price_values.values = prices
-			bot.send_message(message.from_user.id, 'Какое расстояние от центра?')
+			bot.send_message(message.from_user.id, 'Какое расстояние от центра в км?')
 			bot.register_next_step_handler(message, get_distance)
 	else:
 		bot.send_message(message.from_user.id, 'Неверный диапазон цен, повторите. (min-max)')
 		return bot.register_next_step_handler(message, price_values)
 
 
-def get_distance(message):
+def get_distance(message: telebot.types.Message) -> Any:
+	""""
+	Функция для регистрации отдаления от центра
+	"""
 	if not message.text.isdigit():
-		bot.send_message(message.from_user.id, 'Неверное расстояние\nКакое расстояние от центра?')
+		bot.send_message(message.from_user.id, 'Неверное расстояние\nКакое расстояние от центра в км?')
 		return bot.register_next_step_handler(message, get_distance)
 	get_distance.distance = int(message.text)
 	bot.send_message(message.from_user.id, 'Сколько отелей вывести?')
 	bot.register_next_step_handler(message, get_hotels_count)
 
 
-def get_photo(message):
+def get_photo(message: telebot.types.Message) -> Any:
+	""""
+	Функция для регистрации необходимости вывода фото
+	"""
 	if message.text.lower() == 'да':
 		get_photo.photo = True
 		bot.send_message(message.from_user.id, 'Сколько вывести фото?')
 		bot.register_next_step_handler(message, get_photo_count)
 	elif message.text.lower() == 'нет':
 		get_photo.photo = False
-		bot.send_message(message.from_user.id, 'Какая дата заселения? (dd-mm-yyyy)')
+		bot.send_message(message.from_user.id, 'Какая дата заселения? (дд-мм-гггг)')
 		bot.register_next_step_handler(message, register_date_in)
 	else:
 		bot.send_message(message.from_user.id, 'Я так и не понял, да или нет?(')
 		return bot.register_next_step_handler(message, get_photo)
 
 
-def get_photo_count(message):
+def get_photo_count(message: telebot.types.Message) -> Any:
+	""""
+	Функция для регистрации количества фото для вывода
+	"""
 	if message.text.isdigit:
 		if int(message.text) > 5:
 			get_photo_count.count = 5
 		else:
 			get_photo_count.count = int(message.text)
 
-	bot.send_message(message.from_user.id, 'Какая дата заселения? (dd-mm-yyyy)')
+	bot.send_message(message.from_user.id, 'Какая дата заселения? (дд-мм-гггг)')
 	bot.register_next_step_handler(message, register_date_in)
 
 
-def response(message):
+def response(message: telebot.types.Message) -> Any:
+	""""
+	Основная функция вывода запроса пользователя
+	"""
 	response_for_get_request = get_request(city=get_city.city)
 	city_id = None
 
 	if response_for_get_request:
-		city_id = response_for_get_request.get('sr')[0].get('gaiaId')
+		city_id = response_for_get_request.get('sr')
+		if city_id and len(city_id) > 0:
+			city_id = response_for_get_request.get('sr')[0].get('gaiaId')
 
 	if city_id:
 
@@ -234,84 +288,138 @@ def response(message):
 		bot.send_message(message.from_user.id, 'Ничего не найдено')
 
 
-def filter_by_distance(response):
+def filter_by_distance(response: list) -> list:
+	"""
+	Функиция, которая фильтрует список методом sort_method
+	:param response: list
+	:return: list
+	"""
 	filtered_list = list(filter(sort_method, response))
 	return filtered_list
 
 
-def sort_method(elem_to_sort):
+def sort_method(elem_to_sort: json) -> bool:
+	"""
+	Функция - метод сортировки.
+	:param elem_to_sort: list
+	:return:
+	True, если значение дистанции в json файле меньше или равна заявленной пользователем
+	False, если значение дистанции в json файле больше заявленной пользователем
+	"""
 	if elem_to_sort['destinationInfo']['distanceFromDestination']['value'] <= get_distance.distance:
 		return True
 	else:
 		return False
 
 
-def sort_by_price(hotel_list):
+def sort_by_price(hotel_list: list) -> list:
+	"""
+	Сортирует список по значению цены в json файле
+	"""
 	return sorted(hotel_list, key=lambda hotel: int(hotel['price']['lead']['amount']))
 
 
-def get_data(response):
+"""Функции, для получения из post запроса по ID"""
+
+
+def get_data(response: json) -> json:
+	"""
+	Функция получения 'data' из json файла
+	"""
 	if response:
 		return response.get('data')
 
 
-def get_property_search(response):
+def get_property_search(response: json) -> json:
+	"""
+	Функция получения 'propertySearch' из json файла
+	"""
 	data = get_data(response)
 	if data:
 		return data.get('propertySearch')
 
 
-def get_properties(response):
+def get_properties(response: json) -> json:
+	"""
+	Функция получения 'properties' из json файла
+	"""
 	data = get_property_search(response)
 	if data:
 		return data.get('properties')
 
 
-## for hotel details
-def get_property_info(response):
+"""Функции, для получения из post запроса hotel details"""
+
+
+def get_property_info(response: json) -> json:
+	"""
+	Функция получения 'propertyInfo' из json файла
+	"""
 	data = get_data(response)
 	if data:
 		return data.get('propertyInfo')
 
 
-def get_summary(response):
+def get_summary(response: json) -> json:
+	"""
+	Функция получения 'propertyInfo' из json файла
+	"""
 	data = get_property_info(response)
 	if data:
 		return data.get('summary')
 
 
-def get_location(response):
+def get_location(response: json) -> json:
+	"""
+	Функция получения 'location' из json файла
+	"""
 	data = get_summary(response)
 	if data:
 		return data.get('location')
 
 
-def get_address(response):
+def get_address(response: json) -> json:
+	"""
+	Функция получения 'address' из json файла
+	"""
 	data = get_location(response)
 	if data:
 		return data.get('address')
 
 
-def get_address_text(response):
+def get_address_text(response: json) -> json:
+	"""
+	Функция получения 'addressLine' из json файла
+	"""
 	data = get_address(response)
 	if data:
 		return data.get('addressLine')
 
 
-def get_property_gallery(response):
+def get_property_gallery(response: json) -> json:
+	"""
+	Функция получения 'propertyGallery' из json файла
+	"""
 	data = get_property_info(response)
 	if data:
 		return data.get('propertyGallery')
 
 
-def get_images(response):
+def get_images(response: json) -> json:
+	"""
+	Функция получения 'images' из json файла
+	"""
 	data = get_property_gallery(response)
 	if data:
 		return data.get('images')
 
+######################################
 
 @bot.message_handler(content_types=['text'])
-def send_welcome(message):
+def send_welcome(message: telebot.types.Message) -> Any:
+	"""
+	Функция обработки сообщений из Telegram
+	"""
 	if message.text == '/start':
 		start(message)
 	elif message.text == '/hello_world':
@@ -335,11 +443,17 @@ def send_welcome(message):
 
 
 @bot.message_handler(func=lambda message: True)
-def echo_all(message):
+def echo_all(message: telebot.types.Message) -> Any:
+	"""
+	Функция обработки неизвестных сообщений из Telegram
+	"""
 	bot.reply_to(message, 'Я не понимаю вас(')
 
 
-def get_request(city):
+def get_request(city: str) -> json:
+	"""
+	Get запрос API по ключевому слову city
+	"""
 
 	params = {'q': city, 'locale': 'ru_RU'}
 
@@ -355,7 +469,16 @@ def get_request(city):
 		return False
 
 
-def post_request(id, sort, count, min_price, max_price):
+def post_request(id: int, sort: str, count: int, min_price: int, max_price: int):
+	"""
+	Post запрос API по ID города, полученного из get запроса
+	:param id: Идентификатор отеля
+	:param sort: Метод сортировки результата
+	:param count: Количество выводимой информации
+	:param min_price: Минимальная цена для поиска
+	:param max_price: Максимальная цена для поиска
+	:return: json ответ на запрос
+	"""
 
 	url = "https://hotels4.p.rapidapi.com/properties/v2/list"
 	try:
@@ -399,7 +522,12 @@ def post_request(id, sort, count, min_price, max_price):
 		return False
 
 
-def hotel_details_request(id):
+def hotel_details_request(id: int) -> json:
+	"""
+	Post запрос API для по ID отеля, для подробной информации о нем
+	:param id: Идентификатор отеля
+	:return: json ответ на запрос
+	"""
 
 	url = "https://hotels4.p.rapidapi.com/properties/v2/detail"
 	try:
