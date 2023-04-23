@@ -1,6 +1,7 @@
 import telebot, requests, json, datetime
 
 bot = telebot.TeleBot('5708841963:AAGKHWT1WD2M9VfIQj6XMgqEi6pTjhrW8Ao')
+
 # token = {"X-RapidAPI-Key": "bba960687bmsh07b83e8768fc6f4p12c285jsnab9156e7acdc",
 # 		"X-RapidAPI-Host": "hotels4.p.rapidapi.com"}
 
@@ -8,7 +9,7 @@ token = {"X-RapidAPI-Key": "8735a00919msh53cca4ab1530e22p14f9c0jsn62e41d6bf842",
 	"X-RapidAPI-Host": "hotels4.p.rapidapi.com"}
 
 
-command_dict = {'/start': 'Запуск бота',
+command_dict: dict = {'/start': 'Запуск бота',
 				'/hello_world': 'Бот расскажет о себе',
 				'/help': 'Описание доступных команд (вы только что это ввели)',
 				'/lowprice': 'Узнать топ самых дешёвых отелей в городе',
@@ -17,10 +18,25 @@ command_dict = {'/start': 'Запуск бота',
 				'/history': 'Узнать историю поиска отелей'
 				}
 
+history_requests: list = []
 
-def start(message):
-	start.history = {}
+
+def history_update(command: str, time: datetime, hotels_list: list) -> None:
+	history_requests.append({'command': command, 'date': time, 'hotels': hotels_list})
+
+
+def start(message: telebot.types.Message) -> telebot.types.Message:
+	history_requests = []
 	bot.send_message(message.from_user.id, f'Привет, {message.from_user.first_name} {message.from_user.last_name}, я учебный бот!')
+
+
+def history(message):
+	if len(history_requests) == 0:
+		bot.send_message(message.from_user.id, 'История поиска пустая')
+	else:
+		for history in history_requests:
+			bot_string = f'{history.get("command")}, {history.get("date")}, {", ".join(history.get("hotels"))} '
+			bot.send_message(message.from_user.id, bot_string)
 
 
 def register_date_in(message):
@@ -112,13 +128,23 @@ def get_distance(message):
 def get_photo(message):
 	if message.text.lower() == 'да':
 		get_photo.photo = True
+		bot.send_message(message.from_user.id, 'Сколько вывести фото?')
+		bot.register_next_step_handler(message, get_photo_count)
 	elif message.text.lower() == 'нет':
 		get_photo.photo = False
+		bot.send_message(message.from_user.id, 'Какая дата заселения? (dd-mm-yyyy)')
+		bot.register_next_step_handler(message, register_date_in)
 	else:
 		bot.send_message(message.from_user.id, 'Я так и не понял, да или нет?(')
 		return bot.register_next_step_handler(message, get_photo)
 
 
+def get_photo_count(message):
+	if message.text.isdigit:
+		if int(message.text) > 5:
+			get_photo_count.count = 5
+		else:
+			get_photo_count.count = int(message.text)
 
 	bot.send_message(message.from_user.id, 'Какая дата заселения? (dd-mm-yyyy)')
 	bot.register_next_step_handler(message, register_date_in)
@@ -128,7 +154,7 @@ def response(message):
 	response_for_get_request = get_request(city=get_city.city)
 	city_id = None
 
-	if response_for_get_request.get('sr'):
+	if response_for_get_request:
 		city_id = response_for_get_request.get('sr')[0].get('gaiaId')
 
 	if city_id:
@@ -143,6 +169,7 @@ def response(message):
 		count = get_hotels_count.count
 		min_price = 1
 		max_price = 999
+		hotels_for_history = []
 
 		if get_command.command == '/bestdeal':
 			count = 30
@@ -164,7 +191,6 @@ def response(message):
 					response_properties = sort_by_price(response_properties)
 					response_properties = response_properties[:get_hotels_count.count]
 
-
 				for property_in_request in response_properties:
 					hotel_details = hotel_details_request(property_in_request['id'])
 					hotel_image_list = get_images(hotel_details)
@@ -175,6 +201,7 @@ def response(message):
 								'id': property_in_request['id'],
 								'photo': hotel_image_list}})
 
+						hotels_for_history.append(property_in_request['name'])
 
 				timedelta_date = register_date_out.date - register_date_in.date
 
@@ -184,13 +211,19 @@ def response(message):
 
 							if get_photo.photo:
 								media = []
-								for photo in value['photo'][:3]:
-									media.append(telebot.types.InputMediaPhoto(media=photo['image']['url'], caption=bot_answer_string))
+								caption = bot_answer_string
+								if get_photo_count.count == 1:
+									caption = None
+								for photo in value['photo'][:get_photo_count.count]:
+									media.append(telebot.types.InputMediaPhoto(media=photo['image']['url'], caption=caption))
 
 							bot.send_message(message.from_user.id, bot_answer_string)
 
 							if get_photo.photo:
 								bot.send_media_group(chat_id=message.chat.id, media=media)
+
+				history_update(get_command.command, datetime.datetime.now(), hotels_for_history)
+
 			else:
 				bot.send_message(message.from_user.id, 'Ничего не найдено')
 
@@ -218,7 +251,8 @@ def sort_by_price(hotel_list):
 
 
 def get_data(response):
-	return response.get('data')
+	if response:
+		return response.get('data')
 
 
 def get_property_search(response):
@@ -250,6 +284,7 @@ def get_location(response):
 	data = get_summary(response)
 	if data:
 		return data.get('location')
+
 
 def get_address(response):
 	data = get_location(response)
@@ -290,6 +325,9 @@ def send_welcome(message):
 	elif message.text in ('/lowprice', '/guest_rating', '/bestdeal'):
 		get_command(message)
 
+	elif message.text =='/history':
+		history(message)
+
 	else:
 		bot.reply_to(message, 'Я вас не понимаю(')
 
@@ -309,6 +347,7 @@ def get_request(city):
 
 	try:
 		response = requests.request("GET", url, headers=token, params=params, timeout=15)
+
 		if response.status_code == requests.codes.ok:
 			return response.json()
 
