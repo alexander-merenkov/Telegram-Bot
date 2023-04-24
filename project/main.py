@@ -17,17 +17,6 @@ bot = telebot.TeleBot(bot_id)
 bot.add_custom_filter(StateFilter(bot))
 
 
-def history_update(message: telebot.types.Message, command: str, time: datetime, hotels_list: list) -> None:
-	""""
-	Функция добавляет в список, содержащий историю поиска, текущие данные запроса пользователя
-	"""
-	with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
-		if data.get('history'):
-			data['history'].append({'command': command, 'date': time, 'hotels': hotels_list})
-		else:
-			data['history'] = [{'command': command, 'date': time, 'hotels': hotels_list}]
-
-
 def start(message: telebot.types.Message) -> None:
 	""""
 	Функция для команды /start
@@ -324,8 +313,10 @@ def response(message: telebot.types.Message) -> Any:
 									bot.send_media_group(chat_id=message.chat.id, media=media)
 
 				with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
-					bot.set_state(message.from_user.id, UserInfoState.history, message.chat.id)
-					history_update(message, data['command'], datetime.datetime.now(), hotels_for_history)
+					if data.get('history'):
+						data['history'].append({'command': data['command'], 'date': datetime.datetime.now(), 'hotels': hotels_for_history})
+					else:
+						data['history'] = [{'command': data['command'], 'date': datetime.datetime.now(), 'hotels': hotels_for_history}]
 
 			else:
 				bot.send_message(message.from_user.id, 'Ничего не найдено')
@@ -606,7 +597,6 @@ def hotel_details_request(id: int) -> json:
 
 	except Exception:
 		return False
-
 
 
 bot.infinity_polling()
