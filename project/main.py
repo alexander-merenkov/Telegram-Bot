@@ -236,6 +236,7 @@ def response(message: telebot.types.Message) -> Any:
 	""""
 	Основная функция вывода запроса пользователя
 	"""
+    response.message = message
 	with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
 		response_for_get_request = get_request(city=data['city'])
 
@@ -346,10 +347,12 @@ def sort_method(elem_to_sort: json) -> bool:
 	True, если значение дистанции в json файле меньше или равна заявленной пользователем
 	False, если значение дистанции в json файле больше заявленной пользователем
 	"""
-	if elem_to_sort['destinationInfo']['distanceFromDestination']['value'] <= get_distance.distance:
-		return True
-	else:
-		return False
+    message = response.message
+    with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
+        if elem_to_sort['destinationInfo']['distanceFromDestination']['value'] <= data['distance']:
+            return True
+        else:
+            return False
 
 
 def sort_by_price(hotel_list: list) -> list:
