@@ -12,4 +12,3 @@ class UserInfoState(StatesGroup):
     photo = State()
     photo_count = State()
     history = State()
-    start = State()

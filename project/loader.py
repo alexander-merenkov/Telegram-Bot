@@ -1,11 +1,6 @@
-import telebot, os
-from dotenv import load_dotenv
+from telebot import TeleBot
+from telebot.storage import StateMemoryStorage
+from config_data import config
 
-load_dotenv()
-
-BOT_ID = os.getenv('bot_token')
-API_KEY = os.getenv('X-RapidAPI-Key')
-API_HOST = os.getenv('X-RapidAPI-Host')
-
-
-bot = telebot.TeleBot(BOT_ID)
+storage = StateMemoryStorage()
+bot = TeleBot(token=config.BOT_TOKEN, state_storage=storage)
